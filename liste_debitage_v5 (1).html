@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Liste de Débitage — Générateur PDF</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f4f1ec;
+    --surface: #ffffff;
+    --accent: #2c4a2e;
+    --accent-light: #e8efe8;
+    --accent-mid: #4a7c4e;
+    --text: #1a1a1a;
+    --text-muted: #6b6b6b;
+    --border: #d4cfc6;
+    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+    --radius: 12px;
+  }
+
+  body {
+    font-family: 'Georgia', serif;
+    background: var(--bg);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+  }
+
+  .container { width: 100%; max-width: 580px; }
+
+  .header { text-align: center; margin-bottom: 2.5rem; }
+
+  .header-icon {
+    width: 56px; height: 56px;
+    background: var(--accent);
+    border-radius: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1rem;
+  }
+
+  .header-icon svg {
+    width: 28px; height: 28px;
+    fill: none; stroke: #fff;
+    stroke-width: 1.8;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+
+  h1 { font-size: 1.6rem; font-weight: normal; color: var(--text); letter-spacing: -0.02em; margin-bottom: 0.4rem; }
+  .subtitle { font-family: 'Trebuchet MS', sans-serif; font-size: 0.875rem; color: var(--text-muted); letter-spacing: 0.04em; }
+
+  .card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); overflow: hidden; }
+
+  .meta-section { padding: 1.5rem; border-bottom: 1px solid var(--border); }
+  .meta-section h2 { font-family: 'Trebuchet MS', sans-serif; font-size: 0.7rem; font-weight: normal; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 1rem; }
+
+  .fields-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+  .field-full { grid-column: 1 / -1; }
+
+  .field label { display: block; font-family: 'Trebuchet MS', sans-serif; font-size: 0.72rem; letter-spacing: 0.06em; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.3rem; }
+  .field input { width: 100%; padding: 0.5rem 0.7rem; border: 1px solid var(--border); border-radius: 7px; font-family: 'Trebuchet MS', sans-serif; font-size: 0.85rem; color: var(--text); background: #fafaf8; outline: none; transition: border-color 0.15s; }
+  .field input:focus { border-color: var(--accent-mid); background: #fff; }
+
+  .drop-section { padding: 1.5rem; border-bottom: 1px solid var(--border); }
+  .drop-zone { border: 2px dashed var(--border); border-radius: 10px; padding: 2.5rem 1.5rem; text-align: center; cursor: pointer; transition: all 0.2s; background: #fafaf8; position: relative; }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent-mid); background: var(--accent-light); }
+  .drop-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+
+  .drop-icon { width: 40px; height: 40px; margin: 0 auto 0.8rem; background: var(--accent-light); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+  .drop-icon svg { width: 20px; height: 20px; fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .drop-label { font-family: 'Trebuchet MS', sans-serif; font-size: 0.9rem; color: var(--text); margin-bottom: 0.25rem; }
+  .drop-hint { font-family: 'Trebuchet MS', sans-serif; font-size: 0.78rem; color: var(--text-muted); }
+
+  .file-selected { display: none; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; background: var(--accent-light); border: 1px solid #b5d0b7; border-radius: 8px; margin-top: 0.75rem; }
+  .file-selected.visible { display: flex; }
+  .file-selected svg { width: 18px; height: 18px; fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linecap: round; flex-shrink: 0; }
+  .file-name { font-family: 'Trebuchet MS', sans-serif; font-size: 0.85rem; color: var(--accent); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .remove-file { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 1.1rem; line-height: 1; padding: 0 2px; }
+
+  .preview-section { display: none; border-bottom: 1px solid var(--border); }
+  .preview-section.visible { display: block; }
+  .preview-toggle { font-family: 'Trebuchet MS', sans-serif; font-size: 0.72rem; letter-spacing: 0.06em; color: var(--text-muted); text-transform: uppercase; padding: 0.85rem 1.5rem; display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none; border: none; background: none; width: 100%; }
+  .preview-toggle .arrow { transition: transform 0.2s; font-size: 0.75rem; }
+  .preview-toggle.open .arrow { transform: rotate(90deg); }
+  .preview-table-wrap { overflow-x: auto; max-height: 240px; overflow-y: auto; display: none; padding: 0 1.5rem 1rem; }
+  .preview-table-wrap.visible { display: block; }
+  .preview-table { width: 100%; border-collapse: collapse; font-family: 'Trebuchet MS', sans-serif; font-size: 0.75rem; }
+  .preview-table th { background: var(--accent); color: #fff; padding: 5px 8px; text-align: left; font-weight: normal; white-space: nowrap; position: sticky; top: 0; }
+  .preview-table td { padding: 4px 8px; border-bottom: 1px solid #f0ede8; color: var(--text); white-space: nowrap; }
+  .preview-table tr:nth-child(even) td { background: #fafaf8; }
+  .caisse-row td { background: #e0ece0 !important; color: #1e451e; font-weight: 600; font-size: 0.8rem; }
+  .category-row td { background: #dc5032 !important; color: #fff; font-weight: 500; }
+  .material-row td { color: var(--accent); font-style: italic; }
+
+  .action-section { padding: 1.25rem 1.5rem; }
+  .btn-generate { width: 100%; padding: 0.85rem; background: var(--accent); color: #fff; border: none; border-radius: 9px; font-family: 'Trebuchet MS', sans-serif; font-size: 0.95rem; letter-spacing: 0.02em; cursor: pointer; transition: background 0.2s, transform 0.1s; display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
+  .btn-generate:hover { background: #1e3520; }
+  .btn-generate:active { transform: scale(0.99); }
+  .btn-generate:disabled { background: #9fb89f; cursor: not-allowed; transform: none; }
+  .btn-generate svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+  .status { display: none; margin-top: 0.75rem; padding: 0.65rem 0.85rem; border-radius: 7px; font-family: 'Trebuchet MS', sans-serif; font-size: 0.82rem; text-align: center; }
+  .status.success { display: block; background: var(--accent-light); color: var(--accent); border: 1px solid #b5d0b7; }
+  .status.error { display: block; background: #fceaea; color: #a33; border: 1px solid #f5b5b5; }
+  .status.loading { display: block; background: #f0f0f0; color: var(--text-muted); }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(0,0,0,0.15); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
+
+  /* Format panneaux */
+  .format-section { display: none; border-bottom: 1px solid var(--border); }
+  .format-section.visible { display: block; }
+  .format-toggle { font-family: 'Trebuchet MS', sans-serif; font-size: 0.72rem; letter-spacing: 0.06em; color: var(--text-muted); text-transform: uppercase; padding: 0.85rem 1.5rem; display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none; border: none; background: none; width: 100%; }
+  .format-toggle .arrow { transition: transform 0.2s; font-size: 0.75rem; }
+  .format-toggle.open .arrow { transform: rotate(90deg); }
+  .format-body { display: none; padding: 0 1.5rem 1.25rem; }
+  .format-body.visible { display: block; }
+  .format-hint { font-family: 'Trebuchet MS', sans-serif; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.85rem; line-height: 1.5; }
+  .format-list { display: flex; flex-direction: column; gap: 0.55rem; }
+  .format-row { display: grid; grid-template-columns: 1fr 80px 80px; gap: 0.5rem; align-items: center; }
+  .format-row .mat-label { font-family: 'Trebuchet MS', sans-serif; font-size: 0.78rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .format-row input { padding: 0.3rem 0.5rem; border: 1px solid var(--border); border-radius: 6px; font-family: 'Trebuchet MS', sans-serif; font-size: 0.8rem; color: var(--text); background: #fafaf8; outline: none; text-align: center; width: 100%; }
+  .format-row input:focus { border-color: var(--accent-mid); background: #fff; }
+  .format-row input::placeholder { color: #bbb; font-size: 0.72rem; }
+  .format-col-labels { display: grid; grid-template-columns: 1fr 80px 80px; gap: 0.5rem; margin-bottom: 0.3rem; }
+  .format-col-labels span { font-family: 'Trebuchet MS', sans-serif; font-size: 0.65rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); text-align: center; }
+  .format-col-labels span:first-child { text-align: left; }
+  .warn-legend { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; font-family: 'Trebuchet MS', sans-serif; font-size: 0.72rem; color: var(--text-muted); }
+  .warn-swatch { width: 16px; height: 10px; background: #ffe0b2; border: 1px solid #f5a623; border-radius: 3px; flex-shrink: 0; }
+
+  /* Orange highlight in preview table */
+  .preview-table tr.over-format td { background: #ffe0b2 !important; }
+
+  /* Interchangeable checkbox row */
+  .format-interchangeable { display: none; align-items: center; gap: 0.5rem; margin-top: 0.3rem; margin-bottom: 0.1rem; padding: 0.35rem 0.5rem; background: #f7f5f0; border-radius: 6px; border: 1px solid var(--border); }
+  .format-interchangeable.visible { display: flex; }
+  .format-interchangeable input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; }
+  .format-interchangeable label { font-family: 'Trebuchet MS', sans-serif; font-size: 0.75rem; color: var(--text-muted); cursor: pointer; line-height: 1.3; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="header-icon">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+    </div>
+    <h1>Liste de Débitage</h1>
+    <p class="subtitle">Générateur de mise en page PDF</p>
+  </div>
+
+  <div class="card">
+    <div class="meta-section">
+      <h2>Informations du projet</h2>
+      <div class="fields-grid">
+        <div class="field field-full">
+          <label>Titre du projet</label>
+          <input type="text" id="cmd-principale" >
+        </div>
+        <div class="field field-full">
+          <label>Description technique</label>
+          <input type="text" id="desc-tech" placeholder="(optionnel)">
+        </div>
+      </div>
+    </div>
+
+    <div class="drop-section">
+      <div class="drop-zone" id="drop-zone">
+        <input type="file" id="file-input" accept=".xlsx,.xls">
+        <div class="drop-icon">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <p class="drop-label">Déposer le fichier .xlsx ici</p>
+        <p class="drop-hint">ou cliquer pour sélectionner</p>
+      </div>
+      <div class="file-selected" id="file-selected">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span class="file-name" id="file-name-label"></span>
+        <button class="remove-file" id="remove-file" title="Supprimer">×</button>
+      </div>
+    </div>
+
+    <div class="preview-section" id="preview-section">
+      <button class="preview-toggle" id="preview-toggle">
+        <span class="arrow">▶</span> Aperçu des données
+      </button>
+      <div class="preview-table-wrap" id="preview-table-wrap">
+        <table class="preview-table" id="preview-table"></table>
+      </div>
+    </div>
+
+    <div class="format-section" id="format-section">
+      <button class="format-toggle" id="format-toggle">
+        <span class="arrow">▶</span> Formats des panneaux <span style="font-size:0.65rem;margin-left:0.4rem;opacity:0.6;">(optionnel)</span>
+      </button>
+      <div class="format-body" id="format-body">
+        <p class="format-hint">Renseignez les dimensions maximales (en mm) des panneaux bruts pour chaque matière.<br>Les pièces dont la longueur ou la largeur dépasse ces valeurs seront surlignées en orange.</p>
+        <div class="format-col-labels">
+          <span>Matière</span><span>Long. max</span><span>Larg. max</span>
+        </div>
+        <div class="format-list" id="format-list"></div>
+        <div class="warn-legend"><div class="warn-swatch"></div>Pièce dépassant le format du panneau</div>
+      </div>
+    </div>
+
+    <div class="action-section">
+      <button class="btn-generate" id="btn-generate" disabled>
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+        Générer le PDF
+      </button>
+      <div class="status" id="status"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let parsedData = null;
+let fileNameBase = '';
+let formatLimits = {};   // { matiere: { lo: mm|null, la: mm|null } }
+
+const fileInput = document.getElementById('file-input');
+const dropZone = document.getElementById('drop-zone');
+const fileSelectedEl = document.getElementById('file-selected');
+const fileNameLabel = document.getElementById('file-name-label');
+const removeFileBtn = document.getElementById('remove-file');
+const previewSection = document.getElementById('preview-section');
+const previewToggle = document.getElementById('preview-toggle');
+const previewTableWrap = document.getElementById('preview-table-wrap');
+const previewTable = document.getElementById('preview-table');
+const btnGenerate = document.getElementById('btn-generate');
+const statusEl = document.getElementById('status');
+
+// Format section
+const formatSection = document.getElementById('format-section');
+const formatToggle = document.getElementById('format-toggle');
+const formatBody = document.getElementById('format-body');
+const formatList = document.getElementById('format-list');
+
+formatToggle.addEventListener('click', () => {
+  const open = formatBody.classList.toggle('visible');
+  formatToggle.classList.toggle('open', open);
+});
+
+function buildFormatInputs() {
+  // Collect unique materials where colYFilled = false (panneaux seulement)
+  const mats = [];
+  const seen = new Set();
+  for (const row of parsedData) {
+    if (row.colYFilled) continue;
+    const cat = getCategory(row);
+    if (cat !== 'panneaux') continue;
+    if (!seen.has(row.matiere)) { seen.add(row.matiere); mats.push(row.matiere); }
+  }
+
+  formatList.innerHTML = '';
+  formatLimits = {};
+
+  for (const mat of mats) {
+    formatLimits[mat] = { lo: null, la: null, interchangeable: false };
+
+    // Main row: label + Lo input + La input
+    const row = document.createElement('div');
+    row.className = 'format-row';
+    const label = document.createElement('span');
+    label.className = 'mat-label';
+    label.title = matLabel(mat);
+    label.textContent = matLabel(mat);
+    const inLo = document.createElement('input');
+    inLo.type = 'number'; inLo.placeholder = 'Long.'; inLo.min = 0;
+    const inLa = document.createElement('input');
+    inLa.type = 'number'; inLa.placeholder = 'Larg.'; inLa.min = 0;
+
+    // Checkbox row (hidden until at least one dim is set)
+    const chkRow = document.createElement('div');
+    chkRow.className = 'format-interchangeable';
+    const chkId = 'interch-' + mat.replace(/\s+/g, '_');
+    const chk = document.createElement('input');
+    chk.type = 'checkbox'; chk.id = chkId;
+    const chkLabel = document.createElement('label');
+    chkLabel.htmlFor = chkId;
+    chkLabel.textContent = 'Largeur et longueur interchangeable';
+    chkRow.appendChild(chk);
+    chkRow.appendChild(chkLabel);
+
+    const update = () => {
+      formatLimits[mat].lo = inLo.value ? parseFloat(inLo.value) : null;
+      formatLimits[mat].la = inLa.value ? parseFloat(inLa.value) : null;
+      formatLimits[mat].interchangeable = chk.checked;
+      // Show checkbox row only when at least one dimension is filled
+      const hasDim = formatLimits[mat].lo || formatLimits[mat].la;
+      chkRow.classList.toggle('visible', !!hasDim);
+      renderPreview();
+    };
+    inLo.addEventListener('input', update);
+    inLa.addEventListener('input', update);
+    chk.addEventListener('change', update);
+
+    row.appendChild(label);
+    row.appendChild(inLo);
+    row.appendChild(inLa);
+    formatList.appendChild(row);
+    formatList.appendChild(chkRow);
+  }
+
+  if (mats.length > 0) {
+    formatSection.classList.add('visible');
+  }
+}
+
+function isOverFormat(row) {
+  if (row.colYFilled) return false;
+  const lim = formatLimits[row.matiere];
+  if (!lim) return false;
+  const lo = row.longueur, la = row.largeur;
+  if (!lo && !la) return false;
+
+  if (lim.interchangeable) {
+    // Les deux dimensions sont interchangeables :
+    // on peut orienter la pièce dans les deux sens.
+    // La pièce passe si elle rentre dans au moins une orientation.
+    const limLo = lim.lo || Infinity, limLa = lim.la || Infinity;
+    const fitNormal  = (!lo || lo <= limLo) && (!la || la <= limLa);
+    const fitRotated = (!lo || lo <= limLa) && (!la || la <= limLo);
+    return !fitNormal && !fitRotated;
+  }
+
+  if (lim.lo && lo && lo > lim.lo) return true;
+  if (lim.la && la && la > lim.la) return true;
+  return false;
+}
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); const f = e.dataTransfer.files[0]; if (f) handleFile(f); });
+fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+removeFileBtn.addEventListener('click', resetFile);
+previewToggle.addEventListener('click', () => {
+  const open = previewTableWrap.classList.toggle('visible');
+  previewToggle.classList.toggle('open', open);
+});
+
+function handleFile(file) {
+  fileNameBase = file.name.replace(/\.(xlsx|xls)$/i, '');
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+      parsedData = parseRows(raw);
+      buildFormatInputs();
+      renderPreview();
+      fileNameLabel.textContent = file.name;
+      fileSelectedEl.classList.add('visible');
+      previewSection.classList.add('visible');
+      btnGenerate.disabled = false;
+      setStatus('', '');
+    } catch(err) {
+      setStatus('error', 'Erreur de lecture : ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function resetFile() {
+  parsedData = null;
+  formatLimits = {};
+  fileInput.value = '';
+  fileSelectedEl.classList.remove('visible');
+  previewSection.classList.remove('visible');
+  previewTableWrap.classList.remove('visible');
+  previewToggle.classList.remove('open');
+  formatSection.classList.remove('visible');
+  formatBody.classList.remove('visible');
+  formatToggle.classList.remove('open');
+  formatList.innerHTML = '';
+  btnGenerate.disabled = true;
+  setStatus('', '');
+}
+
+// Columns from TopSolid export:
+// 0=N°, 1=Nombre, 2=Désignation, 3=Longueur, 4=Largeur, 5=Epaisseur,
+// 6=Matière, 7-23=other, 24=Type, 25=Remarques
+function parseRows(raw) {
+  const rows = [];
+  for (let i = 1; i < raw.length; i++) {
+    const r = raw[i];
+    if (!r || r.every(c => c === null || c === undefined || c === '')) continue;
+    const typeVal = String(r[24] ?? '').trim();
+    rows.push({
+      num: String(r[0] ?? '').trim(),
+      nombre: (r[1] !== null && r[1] !== undefined && r[1] !== '') ? r[1] : null,
+      designation: String(r[2] ?? '').trim(),
+      longueur: parseFloat(r[3]) || null,
+      largeur: parseFloat(r[4]) || null,
+      epaisseur: parseFloat(r[5]) || null,
+      matiere: String(r[6] ?? '').trim(),
+      type: typeVal,
+      remarques: String(r[25] ?? '').trim(),
+      colYFilled: typeVal !== '',
+    });
+  }
+  return rows;
+}
+
+// Material label mapping
+const MAT_LABELS = {
+  '3PMELEC19': '3 plis mélèze vapo éclaté 19mm',
+  '3PSAP19':   '3 plis sapin 19mm',
+  '38':        'Epaisseur 38mm (double panneau)',
+  'AC2500S':   'LedSolaire profil led SLIM AC2500S',
+  '300 00 Z2 00 Z2': 'CAMAR Dispositif réglage pr socle pied zamac/PVC 0-20 mm',
+};
+function matLabel(m) { return MAT_LABELS[m] || m; }
+
+function isCaisseHeader(row) {
+  // Une ligne est un en-tête de caisse si : pas de dims, matière='0' ou '',
+  // ET que la désignation ne contient pas 'ENSEMBLE' (sous-groupe à ignorer)
+  if (row.longueur || row.largeur || row.epaisseur) return false;
+  if (row.matiere !== '0' && row.matiere !== '') return false;
+  if (row.designation.toUpperCase().includes('ENSEMBLE')) return false;
+  return true;
+}
+
+function getCategory(row) {
+  if (row.type === 'Ferrement') return 'ferrements';
+  if (row.matiere === 'AC2500S') return 'electricite';
+  if (row.matiere === '300 00 Z2 00 Z2') return 'ferrements';
+  if (row.longueur || row.largeur || row.epaisseur) return 'panneaux';
+  return null;
+}
+
+function buildSections(rows) {
+  const sections = [];
+  let caisse = null;
+
+  function flushCaisse() {
+    if (!caisse) return;
+    const panMat = {}, ferrements = [], electricite = [];
+    for (const row of caisse.items) {
+      const cat = getCategory(row);
+      if (cat === 'panneaux') {
+        if (!panMat[row.matiere]) panMat[row.matiere] = [];
+        panMat[row.matiere].push(row);
+      } else if (cat === 'ferrements') {
+        ferrements.push(row);
+      } else if (cat === 'electricite') {
+        electricite.push(row);
+      }
+    }
+    for (const m in panMat) panMat[m].sort((a, b) => (b.largeur || 0) - (a.largeur || 0));
+
+    sections.push({ type: 'caisse', label: caisse.label });
+
+    if (Object.keys(panMat).length > 0) {
+      sections.push({ type: 'category', label: '01 Panneaux' });
+      for (const m in panMat) {
+        sections.push({ type: 'material', label: matLabel(m) });
+        for (const row of panMat[m]) sections.push({ type: 'item', row });
+      }
+    }
+    if (ferrements.length > 0) {
+      sections.push({ type: 'category', label: '11 Ferrements' });
+      for (const row of ferrements) sections.push({ type: 'item', row });
+    }
+    if (electricite.length > 0) {
+      sections.push({ type: 'category', label: '16 Electricité' });
+      const elMat = {};
+      for (const row of electricite) {
+        if (!elMat[row.matiere]) elMat[row.matiere] = [];
+        elMat[row.matiere].push(row);
+      }
+      for (const m in elMat) {
+        sections.push({ type: 'material', label: matLabel(m) });
+        elMat[m].sort((a, b) => (b.largeur || 0) - (a.largeur || 0));
+        for (const row of elMat[m]) sections.push({ type: 'item', row });
+      }
+    }
+    caisse = null;
+  }
+
+  for (const row of rows) {
+    if (isCaisseHeader(row)) {
+      flushCaisse();
+      caisse = { label: row.designation || ('Caisse ' + row.num), items: [] };
+    } else if (caisse) {
+      // Ignorer tous les sous-groupes sans dimensions (ENSEMBLE, etc.)
+      if (!row.longueur && !row.largeur && !row.epaisseur && row.type !== 'Ferrement') continue;
+      caisse.items.push(row);
+    }
+  }
+  flushCaisse();
+  return sections;
+}
+
+function fmtN(v) {
+  if (v === null || v === undefined || v === '') return '';
+  const n = parseFloat(v);
+  if (isNaN(n)) return '';
+  const s = n % 1 === 0 ? n.toString() : n.toFixed(1);
+  return s.replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+}
+
+function escH(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function renderPreview() {
+  const sections = buildSections(parsedData);
+  let html = `<thead><tr><th>Pos</th><th>Nbre.</th><th>Désignation</th><th>Longueur</th><th>Largeur</th><th>Ép.</th><th>Matière</th><th>Remarques</th></tr></thead><tbody>`;
+  for (const s of sections) {
+    if (s.type === 'caisse') {
+      html += `<tr class="caisse-row"><td colspan="8">${escH(s.label)}</td></tr>`;
+    } else if (s.type === 'category') {
+      html += `<tr class="category-row"><td colspan="8">&nbsp;&nbsp;${escH(s.label)}</td></tr>`;
+    } else if (s.type === 'material') {
+      html += `<tr class="material-row"><td colspan="8">&nbsp;&nbsp;&nbsp;&nbsp;${escH(s.label)}</td></tr>`;
+    } else if (s.type === 'item') {
+      const r = s.row;
+      const over = isOverFormat(r);
+      html += `<tr${over ? ' class="over-format"' : ''}><td>${escH(r.num)}</td><td>${r.nombre ?? ''}</td><td>${escH(r.designation)}</td><td>${fmtN(r.longueur)}</td><td>${fmtN(r.largeur)}</td><td>${fmtN(r.epaisseur)}</td><td>${escH(r.matiere)}</td><td>${escH(r.remarques)}</td></tr>`;
+    }
+  }
+  html += '</tbody>';
+  previewTable.innerHTML = html;
+}
+
+function setStatus(type, msg) {
+  statusEl.className = 'status' + (type ? ' ' + type : '');
+  statusEl.innerHTML = msg;
+  statusEl.style.display = msg ? 'block' : 'none';
+}
+
+btnGenerate.addEventListener('click', () => {
+  if (!parsedData) return;
+  btnGenerate.disabled = true;
+  setStatus('loading', '<span class="spinner"></span> Génération du PDF…');
+  setTimeout(() => {
+    try {
+      generatePDF();
+    } catch(err) {
+      console.error(err);
+      btnGenerate.disabled = false;
+      setStatus('error', 'Erreur : ' + err.message);
+    }
+  }, 50);
+});
+
+function generatePDF() {
+  const g = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const meta = {
+    cmd:     g('cmd-principale'),
+    grp:     g('grp-produit'),
+    sb:      g('resp-sb'),
+    dma:     g('resp-dma'),
+    adresse: g('adresse'),
+    desc:    g('desc-tech'),
+  };
+
+  const { jsPDF } = window.jspdf;
+
+  // A4 Portrait 
+  const PAGE_W = 210, PAGE_H = 297;
+  const ML = 10, MR = 10, MT = 8;
+  const CW = PAGE_W - ML - MR;
+
+  // Colonnes A4 portrait (CW = 190mm) — labels courts pour éviter débordement
+  const COLS = [
+    { h: 'Pos',      w: 14,  align: 'left'   },
+    { h: 'Désignation', w: 54, align: 'left'  },
+    { h: 'Nbre.',    w: 11,  align: 'center' },
+    { h: 'Long.',    w: 20,  align: 'right'  },
+    { h: 'Larg.',    w: 17,  align: 'right'  },
+    { h: 'Ép.',      w: 12,  align: 'right'  },
+    { h: 'Long.fin.', w: 20, align: 'right'  },
+    { h: 'Larg.fin.', w: 17, align: 'right'  },
+    { h: 'Ép.fin.',  w: 12,  align: 'right'  },
+    { h: 'Rem.',     w: 0,   align: 'left'   },
+  ];
+  const fixedW = COLS.slice(0,9).reduce((s,c)=>s+c.w, 0);
+  COLS[9].w = CW - fixedW;
+
+  let xCur = ML;
+  const colX = COLS.map(c => { const x = xCur; xCur += c.w; return x; });
+
+  // ── Calcul récapitulatif m² par matière ──────────────────────────────────
+  // Exclure les lignes dont colYFilled === true (col Y non vide)
+  const m2ByMat = {};
+  for (const row of parsedData) {
+    if (row.colYFilled) continue;                          // exclus si col Y remplie
+    if (!row.longueur || !row.largeur || !row.nombre) continue; // pas de dims = pas de surface
+    const cat = getCategory(row);
+    if (cat !== 'panneaux') continue;                      // panneaux seulement
+    const surface = (row.longueur / 1000) * (row.largeur / 1000) * row.nombre; // en m²
+    if (!m2ByMat[row.matiere]) m2ByMat[row.matiere] = 0;
+    m2ByMat[row.matiere] += surface;
+  }
+
+  const HDR_H = 36;   // top header height
+  const COL_H = 6.5;  // column header row height
+  const ROW_H = 5.5;  // data row height
+  const FIRST_Y = MT + HDR_H + COL_H;
+
+  // Colors
+  const C_CAT_BG  = [210, 70, 40];
+  const C_CAISSE_BG = [210, 230, 210];
+  const C_ALT    = [246, 245, 242];
+  const C_BORDER = [200, 200, 197];
+  const C_TEXT   = [25, 25, 25];
+  const C_MUTED  = [110, 110, 110];
+  const C_WHITE  = [255, 255, 255];
+
+  // Two-pass for page count
+  function renderAll(doc, totalPages) {
+    let y = FIRST_Y;
+    let pageNum = 1;
+
+    function drawHeader(pn, pt) {
+      // Background
+      doc.setFillColor(255,255,255);
+      doc.rect(ML, MT, CW, HDR_H - 1, 'F');
+      // Bottom line of header
+      doc.setDrawColor(...C_BORDER);
+      doc.setLineWidth(0.4);
+      doc.line(ML, MT + HDR_H - 1, ML + CW, MT + HDR_H - 1);
+
+      // Title
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10.5);
+      doc.setTextColor(...C_TEXT);
+      doc.text('Liste de débitage', ML, MT + 7);
+
+      // Page indicator - top right
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(...C_MUTED);
+      doc.text(`Page: ${pn}/${pt}`, PAGE_W - MR, MT + 4.5, { align: 'right' });
+
+      // Meta rows
+      let my = MT + 12.5;
+      const mh = 5;
+
+      function metaRow(label, value, sbLabel, sbVal) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...C_MUTED);
+        doc.text(label, ML, my);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...C_TEXT);
+        if (value) doc.text(value, ML + 40, my);
+        if (sbLabel && sbVal) {
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...C_MUTED);
+          doc.text(sbLabel, PAGE_W - MR - 22, my);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...C_TEXT);
+          doc.text(sbVal, PAGE_W - MR, my, { align: 'right' });
+        }
+        my += mh;
+      }
+
+      metaRow('Commande principale', meta.cmd, 'SB:', meta.sb);
+      metaRow('Groupe de produit', meta.grp, 'SB:', meta.dma);
+      if (meta.adresse) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...C_MUTED);
+        doc.text('Adresse chantier:', ML, my);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...C_TEXT);
+        doc.text(meta.adresse, ML + 40, my);
+        my += mh;
+      }
+      if (meta.desc) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...C_MUTED);
+        doc.text('Description tech.:', ML, my);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...C_TEXT);
+        doc.text(meta.desc, ML + 40, my);
+      }
+
+      // Column header band
+      const chy = MT + HDR_H;
+      doc.setFillColor(242, 241, 238);
+      doc.rect(ML, chy, CW, COL_H, 'F');
+      doc.setDrawColor(...C_BORDER);
+      doc.setLineWidth(0.25);
+      doc.rect(ML, chy, CW, COL_H, 'S');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(...C_MUTED);
+      for (let i = 0; i < COLS.length; i++) {
+        if (i > 0) {
+          doc.setDrawColor(...C_BORDER);
+          doc.setLineWidth(0.15);
+          doc.line(colX[i], chy, colX[i], chy + COL_H);
+        }
+        const tx = COLS[i].align === 'right' ? colX[i] + COLS[i].w - 1 : colX[i] + 1.5;
+        doc.text(COLS[i].h, tx, chy + 4.3, { align: COLS[i].align === 'right' ? 'right' : 'left' });
+      }
+    }
+
+    function drawFooter(pn, pt) {
+      const fy = PAGE_H - 5;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(...C_MUTED);
+      const now = new Date();
+      const d = now.toLocaleDateString('fr-CH') + ' ' + now.toLocaleTimeString('fr-CH', {hour:'2-digit',minute:'2-digit'});
+      doc.text(d, ML, fy);
+      doc.text(`${pn} / ${pt}`, PAGE_W / 2, fy, { align: 'center' });
+    }
+
+    function checkBreak(needed) {
+      if (y + needed > PAGE_H - 8) {
+        drawFooter(pageNum, totalPages);
+        doc.addPage();
+        pageNum++;
+        y = FIRST_Y;
+        drawHeader(pageNum, totalPages);
+      }
+    }
+
+    drawHeader(pageNum, totalPages);
+
+    const sections = buildSections(parsedData);
+    let alt = false;
+
+    for (const s of sections) {
+      if (s.type === 'caisse') {
+        y += 2.5;
+        checkBreak(9);
+        doc.setFillColor(...C_CAISSE_BG);
+        doc.rect(ML, y, CW, 7.5, 'F');
+        doc.setDrawColor(170, 200, 170);
+        doc.setLineWidth(0.2);
+        doc.rect(ML, y, CW, 7.5, 'S');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(25, 65, 25);
+        doc.text(s.label, ML + 3, y + 5.3);
+        y += 7.5;
+        alt = false;
+
+      } else if (s.type === 'category') {
+        y += 1.5;
+        checkBreak(9);
+        doc.setFillColor(...C_CAT_BG);
+        doc.rect(ML, y, CW, 7.5, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(255, 255, 255);
+        doc.text(s.label, ML + 3, y + 5.3);
+        y += 7.5;
+        alt = false;
+
+      } else if (s.type === 'material') {
+        y += 2;
+        checkBreak(7);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...C_TEXT);
+        doc.text(s.label, ML + 5, y + 4.5);
+        y += 5.5;
+        doc.setDrawColor(...C_BORDER);
+        doc.setLineWidth(0.2);
+        doc.line(ML + 5, y, ML + CW, y);
+        y += 1;
+        alt = false;
+
+      } else if (s.type === 'item') {
+        checkBreak(ROW_H);
+        const overFmt = isOverFormat(s.row);
+        if (overFmt) {
+          doc.setFillColor(255, 224, 178);
+          doc.rect(ML, y, CW, ROW_H, 'F');
+        } else if (alt) {
+          doc.setFillColor(...C_ALT);
+          doc.rect(ML, y, CW, ROW_H, 'F');
+        }
+        doc.setDrawColor(225, 224, 220);
+        doc.setLineWidth(0.1);
+        doc.line(ML, y + ROW_H, ML + CW, y + ROW_H);
+
+        const r = s.row;
+        const ty = y + ROW_H - 1.6;
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(...C_TEXT);
+
+        // Pos
+        doc.text(String(r.num || ''), colX[0] + 1, ty);
+        // Désignation (col 1)
+        const desStr = String(r.designation || '');
+        const desTrimmed = doc.splitTextToSize(desStr, COLS[1].w - 2)[0] || '';
+        doc.text(desTrimmed, colX[1] + 1, ty);
+        // Nbre (bold) col 2
+        if (r.nombre !== null) {
+          doc.setFont('helvetica', 'bold');
+          doc.text(String(r.nombre), colX[2] + COLS[2].w / 2, ty, { align: 'center' });
+          doc.setFont('helvetica', 'normal');
+        }
+        // Lo col 3
+        if (r.longueur) {
+          doc.setFont('helvetica', 'bold');
+          doc.text(fmtN(r.longueur), colX[3] + COLS[3].w - 1, ty, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+        }
+        // La col 4
+        if (r.largeur) {
+          doc.setFont('helvetica', 'bold');
+          doc.text(fmtN(r.largeur), colX[4] + COLS[4].w - 1, ty, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+        }
+        // Ep col 5
+        if (r.epaisseur) doc.text(fmtN(r.epaisseur), colX[5] + COLS[5].w - 1, ty, { align: 'right' });
+        // Lo fini col 6
+        if (r.longueur) {
+          doc.setFont('helvetica', 'bold');
+          doc.text(fmtN(r.longueur), colX[6] + COLS[6].w - 1, ty, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+        }
+        // La finie col 7
+        if (r.largeur) {
+          doc.setFont('helvetica', 'bold');
+          doc.text(fmtN(r.largeur), colX[7] + COLS[7].w - 1, ty, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+        }
+        // Ep finie col 8
+        if (r.epaisseur) doc.text(fmtN(r.epaisseur), colX[8] + COLS[8].w - 1, ty, { align: 'right' });
+        // Remarques col 9
+        if (r.remarques) {
+          doc.setFontSize(6);
+          doc.setTextColor(...C_MUTED);
+          const remTrimmed = doc.splitTextToSize(r.remarques, COLS[9].w - 2)[0] || '';
+          doc.text(remTrimmed, colX[9] + 1, ty);
+          doc.setFontSize(7);
+          doc.setTextColor(...C_TEXT);
+        }
+        y += ROW_H;
+        // Ligne d'avertissement sous les pièces hors format
+        if (overFmt) {
+          const WARN_H = 4.5;
+          checkBreak(WARN_H);
+          doc.setFillColor(255, 243, 224);
+          doc.rect(ML, y, CW, WARN_H, 'F');
+          doc.setDrawColor(245, 166, 35);
+          doc.setLineWidth(0.15);
+          doc.line(ML, y + WARN_H, ML + CW, y + WARN_H);
+          // Icône triangle d'avertissement (petit)
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(6);
+          doc.setTextColor(200, 100, 0);
+          doc.text('! Attention : pièce plus grande que le format du panneau', ML + 3, y + 3.2);
+          y += WARN_H;
+          alt = !alt; // compense l'alternance pour la ligne suivante
+        }
+        alt = !alt;
+      }
+    }
+
+    // ── Récapitulatif m² ─────────────────────────────────────────────────────
+    if (Object.keys(m2ByMat).length > 0) {
+      const summaryH = 14 + Object.keys(m2ByMat).length * 7 + 8;
+      checkBreak(summaryH + 10);
+      y += 6;
+
+      // Title band
+      doc.setFillColor(44, 74, 46);
+      doc.rect(ML, y, CW, 8, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text('Récapitulatif des matériaux', ML + 3, y + 5.5);
+      y += 8;
+
+      // Sub-header
+      doc.setFillColor(242, 241, 238);
+      doc.rect(ML, y, CW, 6, 'F');
+      doc.setDrawColor(200, 200, 197);
+      doc.setLineWidth(0.2);
+      doc.rect(ML, y, CW, 6, 'S');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(110, 110, 110);
+      doc.text('Matière', ML + 2, y + 4);
+      doc.text('Surface totale (m²)', ML + CW - 2, y + 4, { align: 'right' });
+      y += 6;
+
+      let rowAltS = false;
+      for (const mat in m2ByMat) {
+        if (rowAltS) {
+          doc.setFillColor(246, 245, 242);
+          doc.rect(ML, y, CW, 7, 'F');
+        }
+        doc.setDrawColor(220, 220, 217);
+        doc.setLineWidth(0.1);
+        doc.line(ML, y + 7, ML + CW, y + 7);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(25, 25, 25);
+        doc.text(matLabel(mat), ML + 2, y + 5);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.text(m2ByMat[mat].toFixed(2) + ' m²', ML + CW - 2, y + 5, { align: 'right' });
+
+        y += 7;
+        rowAltS = !rowAltS;
+      }
+
+      // Note
+      y += 3;
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(6);
+      doc.setTextColor(130, 130, 130);
+      doc.text('* Surfaces calculées en m² (Lo × La × Nbre.), éléments avec type renseigné exclus.', ML + 2, y);
+      y += 4;
+    }
+
+    drawFooter(pageNum, totalPages);
+    return pageNum;
+  }
+
+  // Pass 1: count pages
+  const doc1 = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const totalP = renderAll(doc1, 999);
+
+  // Pass 2: render with correct total
+  const doc2 = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  renderAll(doc2, totalP);
+
+  doc2.save(fileNameBase + '_liste_debitage.pdf');
+
+  btnGenerate.disabled = false;
+  setStatus('success', `✓ PDF généré — ${totalP} page${totalP > 1 ? 's' : ''}`);
+}
+</script>
+</body>
+</html>
