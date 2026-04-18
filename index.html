@@ -680,11 +680,11 @@ function generatePDF() {
   }
 
   // Pass 1: count pages
-  const doc1 = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const doc1 = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const totalP = renderAll(doc1, 999);
 
   // Pass 2: render with correct total
-  const doc2 = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const doc2 = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   renderAll(doc2, totalP);
 
   doc2.save(fileNameBase + '_liste_debitage.pdf');
